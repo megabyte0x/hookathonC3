@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.26;
 
 import {BaseHook} from "v4-periphery/src/base/hooks/BaseHook.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -48,12 +48,7 @@ contract GasPriceFeesHook is BaseHook {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
+    function beforeInitialize(address, PoolKey calldata key, uint160) external pure override returns (bytes4) {
         // `.isDynamicFee()` function comes from using
         // the `SwapFeeLibrary` for `uint24`
         if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
@@ -63,7 +58,6 @@ contract GasPriceFeesHook is BaseHook {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
-        onlyByPoolManager
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         uint24 fee = getFee();

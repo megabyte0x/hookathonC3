@@ -32,11 +32,11 @@ contract TestGasPriceFeesHook is Test, Deployers {
             address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG));
 
         vm.txGasPrice(10 gwei);
-        deployCodeTo("GasPriceFeesHook", abi.encode(manager), hookAddress);
+        deployCodeTo("GasPriceFeesHook.sol", abi.encode(manager), hookAddress);
 
         hook = GasPriceFeesHook(hookAddress);
 
-        (key,,) = initPool(currency0, currency1, hook, LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_1_1, ZERO_BYTES);
+        (key,) = initPool(currency0, currency1, hook, LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1);
 
         modifyLiquidityRouter.modifyLiquidity(
             key,
@@ -72,7 +72,7 @@ contract TestGasPriceFeesHook is Test, Deployers {
         uint256 balanceOfToken1Before = currency1.balanceOfSelf();
         swapRouter.swap(key, params, testSettings, ZERO_BYTES);
         uint256 balanceOfToken1After = currency1.balanceOfSelf();
-        uint256 outputFromBaseFeeSwap = balanceOfToken1Before - balanceOfToken1After;
+        uint256 outputFromBaseFeeSwap = balanceOfToken1After - balanceOfToken1Before;
 
         assertGt(balanceOfToken1After, balanceOfToken1Before);
 
@@ -87,7 +87,7 @@ contract TestGasPriceFeesHook is Test, Deployers {
         balanceOfToken1Before = currency1.balanceOfSelf();
         swapRouter.swap(key, params, testSettings, ZERO_BYTES);
         balanceOfToken1After = currency1.balanceOfSelf();
-        outputFromIncreasedFeeSwap = balanceOfToken1Before - balanceOfToken1After;
+        uint256 outputFromIncreasedFeeSwap = balanceOfToken1After - balanceOfToken1Before;
 
         assertGt(balanceOfToken1After, balanceOfToken1Before);
 
@@ -102,7 +102,7 @@ contract TestGasPriceFeesHook is Test, Deployers {
         balanceOfToken1Before = currency1.balanceOfSelf();
         swapRouter.swap(key, params, testSettings, ZERO_BYTES);
         balanceOfToken1After = currency1.balanceOfSelf();
-        outputFromDecreasedFeeSwap = balanceOfToken1Before - balanceOfToken1After;
+        uint256 outputFromDecreasedFeeSwap = balanceOfToken1After - balanceOfToken1Before;
 
         assertGt(balanceOfToken1After, balanceOfToken1Before);
 
