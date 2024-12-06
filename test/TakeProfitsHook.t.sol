@@ -166,6 +166,95 @@ contract TakeProfitsHookTest is Test, Deployers {
         assertEq(newToken1Balance - originalToken1Balance, claimableOutputTokens);
     }
 
+    function test_orderExecute_oneForZero() public {
+        int24 tick = -100;
+        uint256 amount = 1 ether;
+        bool zeroForOne = false;
+
+        int24 tickLower = hook.placeOrder(key, tick, zeroForOne, amount);
+
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: !zeroForOne,
+            amountSpecified: -1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        });
+
+        PoolSwapTest.TestSettings memory settings =
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+
+        swapRouter.swap(key, params, settings, ZERO_BYTES);
+
+        uint256 pendingTokensForPosition = hook.pendingOrders(key.toId(), tickLower, zeroForOne);
+        assertEq(pendingTokensForPosition, 0);
+
+        uint256 positionId = hook.getPositionId(key, tickLower, zeroForOne);
+        uint256 claimableOutputTokens = hook.claimableOutputTokens(positionId);
+        uint256 hookContractToken0Balance = token0.balanceOf(address(hook));
+        assertEq(claimableOutputTokens, hookContractToken0Balance);
+
+        uint256 originalToken0Balance = token0.balanceOfSelf();
+        hook.redeem(key, tick, zeroForOne, amount);
+        uint256 newToken0Balance = token0.balanceOfSelf();
+
+        assertEq(newToken0Balance - originalToken0Balance, claimableOutputTokens);
+    }
+
+    function test_multiple_orderExecute_zeroForOne_onlyOne() public {
+        int24 tick1 = 0;
+        int24 tick2 = 60;
+        uint256 amount = 0.01 ether;
+        bool zeroForOne = true;
+
+        hook.placeOrder(key, tick1, zeroForOne, amount);
+        hook.placeOrder(key, tick2, zeroForOne, amount);
+
+        (, int24 currentTick,,) = manager.getSlot0(key.toId());
+        assertEq(currentTick, 0);
+
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: !zeroForOne,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+        });
+
+        PoolSwapTest.TestSettings memory settings =
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+
+        swapRouter.swap(key, params, settings, ZERO_BYTES);
+
+        uint256 tokensLeftToSell = hook.pendingOrders(key.toId(), 0, true);
+        assertEq(tokensLeftToSell, 0);
+
+        tokensLeftToSell = hook.pendingOrders(key.toId(), 60, true);
+        assertEq(tokensLeftToSell, amount);
+    }
+
+    function test_multiple_orderExecute_zeroForOne_both() public {
+        PoolSwapTest.TestSettings memory testSettings =
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+
+        // Setup two zeroForOne orders at ticks 0 and 60
+        uint256 amount = 0.01 ether;
+
+        hook.placeOrder(key, 0, true, amount);
+        hook.placeOrder(key, 60, true, amount);
+
+        // Do a swap to make tick increase
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: false,
+            amountSpecified: -0.5 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+        });
+
+        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+
+        uint256 tokensLeftToSell = hook.pendingOrders(key.toId(), 0, true);
+        assertEq(tokensLeftToSell, 0);
+
+        tokensLeftToSell = hook.pendingOrders(key.toId(), 60, true);
+        assertEq(tokensLeftToSell, 0);
+    }
+
     function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
         return this.onERC1155Received.selector;
     }
