@@ -43,6 +43,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
         pendingOrders;
     mapping(uint256 positionId => uint256 claimsSupply) public claimTokensSupply;
     mapping(uint256 positionId => uint256 outputClaimable) public claimableOutputTokens;
+    mapping(PoolId poolId => int24 lastTick) public lastTicks;
 
     constructor(IPoolManager _manager, string memory _uri) BaseHook(_manager) ERC1155(_uri) {}
 
@@ -72,7 +73,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
         onlyPoolManager
         returns (bytes4)
     {
-        // TODO
+        lastTicks[key.toId()] = tick;
         return this.afterInitialize.selector;
     }
 
@@ -83,7 +84,16 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
         BalanceDelta,
         bytes calldata
     ) external override onlyPoolManager returns (bytes4, int128) {
-        // TODO
+        if (sender == address(this)) return (this.afterSwap.selector, 0);
+
+        bool tryMore = true;
+        int24 currentTick;
+
+        while (tryMore) {
+            (tryMore, currentTick) = tryExecutingOrders(key, !params.zeroForOne);
+        }
+
+        lastTicks[key.toId()] = currentTick;
         return (this.afterSwap.selector, 0);
     }
 
@@ -95,7 +105,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
 
         pendingOrders[key.toId()][tick][zeroForOne] += inputAmount;
 
-        uint256 positionId = getPostiionId(key, tick, zeroForOne);
+        uint256 positionId = getPositionId(key, tick, zeroForOne);
         claimTokensSupply[positionId] += inputAmount;
         _mint(msg.sender, positionId, inputAmount, "");
 
@@ -108,7 +118,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
 
     function cancelOrder(PoolKey calldata key, int24 tickToSellAt, bool zeroForOne, uint256 amountToCancel) external {
         int24 tick = getLowerUsableTick(tickToSellAt, key.tickSpacing);
-        uint256 positionId = getPostiionId(key, tick, zeroForOne);
+        uint256 positionId = getPositionId(key, tick, zeroForOne);
 
         uint256 positionTokens = balanceOf(msg.sender, positionId);
         if (positionTokens < amountToCancel) revert NotEnoughToClaim();
@@ -127,7 +137,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
         external
     {
         int24 tick = getLowerUsableTick(tickToSellAt, key.tickSpacing);
-        uint256 positionId = getPostiionId(key, tick, zeroForOne);
+        uint256 positionId = getPositionId(key, tick, zeroForOne);
 
         if (claimableOutputTokens[positionId] == 0) revert NothingToClaim();
 
@@ -143,7 +153,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
         claimTokensSupply[positionId] -= inputAmountToClaimFor;
         _burn(msg.sender, positionId, inputAmountToClaimFor);
 
-        Currency token = zeroForOne ? key.currency0 : key.currency1;
+        Currency token = zeroForOne ? key.currency1 : key.currency0;
         token.transfer(msg.sender, outputAmount);
     }
 
@@ -159,7 +169,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
             }
 
             if (delta.amount1() > 0) {
-                _settle(key.currency1, uint128(delta.amount1()));
+                _take(key.currency1, uint128(delta.amount1()));
             }
         } else {
             if (delta.amount1() < 0) {
@@ -167,7 +177,7 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
             }
 
             if (delta.amount0() > 0) {
-                _settle(key.currency0, uint128(delta.amount0()));
+                _take(key.currency0, uint128(delta.amount0()));
             }
         }
 
@@ -203,13 +213,40 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
         );
 
         pendingOrders[key.toId()][tick][zeroForOne] -= inputAmount;
-        uint256 positionId = getPostiionId(key, tick, zeroForOne);
+        uint256 positionId = getPositionId(key, tick, zeroForOne);
         uint256 outputAmount = zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(delta.amount0()));
 
         claimableOutputTokens[positionId] += outputAmount;
     }
 
-    function getPostiionId(PoolKey calldata key, int24 tick, bool zeroForOne) public pure returns (uint256) {
+    function tryExecutingOrders(PoolKey calldata key, bool executeZeroForOne)
+        internal
+        returns (bool tryMore, int24 newTick)
+    {
+        (, int24 currentTick,,) = poolManager.getSlot0(key.toId());
+        int24 lastTick = lastTicks[key.toId()];
+
+        if (currentTick > lastTick) {
+            for (int24 tick = lastTick; tick < currentTick; tick += key.tickSpacing) {
+                uint256 inputAmount = pendingOrders[key.toId()][tick][executeZeroForOne];
+
+                if (inputAmount > 0) {
+                    executeOrder(key, tick, executeZeroForOne, inputAmount);
+                    return (true, currentTick);
+                }
+            }
+        } else {
+            for (int24 tick = lastTick; tick > currentTick; tick -= key.tickSpacing) {
+                uint256 inputAmount = pendingOrders[key.toId()][tick][executeZeroForOne];
+                if (inputAmount > 0) {
+                    executeOrder(key, tick, executeZeroForOne, inputAmount);
+                    return (true, currentTick);
+                }
+            }
+        }
+    }
+
+    function getPositionId(PoolKey calldata key, int24 tick, bool zeroForOne) public pure returns (uint256) {
         return uint256(keccak256(abi.encode(key.toId(), tick, zeroForOne)));
     }
 }
