@@ -4,6 +4,9 @@ ARTIFACTS_DIR = circuit_artifacts
 # Default target
 all: setup compile ptau gen_verifier
 
+install:
+	forge install cyfrin/foundry-devops --no-commit && npm i
+
 # Create necessary directories
 setup:
 	mkdir -p $(ARTIFACTS_DIR)
@@ -31,3 +34,9 @@ gen_verifier:
 # Clean circuit_artifacts
 clean:
 	rm -rf $(ARTIFACTS_DIR)
+
+deployFromSratch:
+	forge script script/V4Deployer.s.sol:V4Deployer --fork-url http://localhost:8545 --broadcast
+
+deploy_hook:
+	forge script script/HookMiningSample.s.sol:HookMiningSample --fork-url http://localhost:8545 --broadcast --ffi
