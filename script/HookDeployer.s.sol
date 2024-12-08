@@ -19,7 +19,7 @@ import {Groth16Verifier} from "../src/Verifier.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 import "forge-std/console.sol";
 
-contract HookMiningSample is Script {
+contract HookDeployer is Script {
     HelperConfig helperConfig = new HelperConfig();
 
     PoolManager manager = PoolManager(helperConfig.getManager());
