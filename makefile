@@ -37,6 +37,7 @@ clean:
 
 deployFromSratch:
 	forge script script/V4Deployer.s.sol:V4Deployer --fork-url http://localhost:8545 --broadcast
+	forge script script/HookDeployer.s.sol:HookDeployer --fork-url http://localhost:8545 --broadcast --ffi
 
-deploy_hook:
-	forge script script/HookMiningSample.s.sol:HookMiningSample --fork-url http://localhost:8545 --broadcast --ffi
+set_avs_address:
+	forge script script/TornadoHook.s.sol:SetAVSAddress --fork-url http://localhost:8545 --broadcast --ffi
