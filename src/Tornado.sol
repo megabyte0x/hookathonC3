@@ -54,7 +54,7 @@ abstract contract Tornado is MerkleTreeWithHistory, ReentrancyGuard {
      * @dev Deposit funds into the contract. The caller must send (for ETH) or approve (for ERC20) value equal to or `denomination` of this instance.
      * @param _commitment the note commitment, which is PedersenHash(nullifier + secret)
      */
-    function deposit(bytes32 _commitment) external nonReentrant {
+    function deposit(bytes32 _commitment) public nonReentrant {
         require(!commitments[_commitment], "The commitment has been submitted");
 
         uint32 insertedIndex = _insert(_commitment);
@@ -72,45 +72,35 @@ abstract contract Tornado is MerkleTreeWithHistory, ReentrancyGuard {
      *   - optional fee that goes to the transaction sender (usually a relay)
      */
     function withdraw(
-        uint256[2] calldata _pA,
-        uint256[2][2] calldata _pB,
-        uint256[2] calldata _pC,
+        uint256[2] memory _pA,
+        uint256[2][2] memory _pB,
+        uint256[2] memory _pC,
         bytes32 _root,
         bytes32 _nullifierHash,
-        address _recipient,
         address _relayer,
         uint256 _fee,
         uint256 _refund
-    ) external payable nonReentrant {
+    ) public payable nonReentrant returns (bool isCorrect) {
         require(_fee <= denomination, "Fee exceeds transfer value");
         require(!nullifierHashes[_nullifierHash], "The note has been already spent");
         require(isKnownRoot(_root), "Cannot find your merkle root"); // Make sure to use a recent one
-        require(
-            verifier.verifyProof(
-                _pA,
-                _pB,
-                _pC,
-                [
-                    uint256(_root),
-                    uint256(_nullifierHash),
-                    uint256(uint160(_recipient)),
-                    uint256(uint160(_relayer)),
-                    _fee,
-                    _refund
-                ]
-            ),
-            "Invalid withdraw proof"
+        isCorrect = verifier.verifyProof(
+            _pA,
+            _pB,
+            _pC,
+            [
+                uint256(_root),
+                uint256(_nullifierHash),
+                uint256(uint160(msg.sender)),
+                uint256(uint160(_relayer)),
+                _fee,
+                _refund
+            ]
         );
 
         nullifierHashes[_nullifierHash] = true;
-        _processWithdraw(_recipient, _relayer, _fee, _refund);
-        emit Withdrawal(_recipient, _nullifierHash, _relayer, _fee);
+        emit Withdrawal(msg.sender, _nullifierHash, _relayer, _fee);
     }
-
-    /**
-     * @dev this function is defined in a child contract
-     */
-    function _processWithdraw(address _recipient, address _relayer, uint256 _fee, uint256 _refund) internal virtual;
 
     /**
      * @dev whether a note is already spent
